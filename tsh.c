@@ -26,6 +26,7 @@
 #define BG 2    /* running in background */
 #define ST 3    /* stopped */
 
+
 /* 
  * Jobs states: FG (foreground), BG (background), ST (stopped)
  * Job state transitions and enabling actions:
@@ -50,6 +51,10 @@ struct job_t {              /* The job struct */
     char cmdline[MAXLINE];  /* command line */
 };
 struct job_t jobs[MAXJOBS]; /* The job list */
+
+// NOTE: Custom global variables
+const int builtin_len = 4;
+const char *builtin[] = {"quit", "jobs", "bg", "fg"};
 /* End global variables */
 
 
@@ -83,6 +88,8 @@ void listjobs(struct job_t *jobs);
 void usage(void);
 void unix_error(char *msg);
 void app_error(char *msg);
+
+// handler type and constructor function
 typedef void handler_t(int);
 handler_t *Signal(int signum, handler_t *handler);
 
@@ -166,7 +173,13 @@ int main(int argc, char **argv) {
  * when we type ctrl-c (ctrl-z) at the keyboard.  
 */
 void eval(char *cmdline) {
-    return;
+    char *argv[MAXLINE];
+    int bg = parseline(cmdline, argv);
+    if (!bg) {
+        if (!builtin_cmd(argv)) {
+            printf("Not builtin\n");
+        }
+    }
 }
 
 /* 
@@ -231,7 +244,27 @@ int parseline(const char *cmdline, char **argv) {
  *    it immediately.  
  */
 int builtin_cmd(char **argv) {
-    return 0;     /* not a builtin command */
+    int is_builtin = 0;
+    int idx = 0;
+    for (int i = 0; i < builtin_len; i++, idx++) {
+        if (strcmp(argv[0], builtin[i]) == 0) {
+            is_builtin = 1;
+            break;
+        }
+    }
+
+    if (builtin[idx] != NULL) {
+        if (strcmp(builtin[idx], "quit") == 0) {
+            sigquit_handler(SIGQUIT);
+        } else if (strcmp(builtin[idx], "jobs") == 0) {
+            listjobs(jobs);
+        } else if (strcmp(builtin[idx], "fg") == 0) {
+            
+        } else if (strcmp(builtin[idx], "bg") == 0) {
+
+        }
+    }
+    return is_builtin;     /* not a builtin command */
 }
 
 /* 
@@ -269,6 +302,7 @@ void sigchld_handler(int sig) {
  *    to the foreground job.  
  */
 void sigint_handler(int sig) {
+    
     return;
 }
 
@@ -500,6 +534,3 @@ void sigquit_handler(int sig) {
     printf("Terminating after receipt of SIGQUIT signal\n");
     exit(1);
 }
-
-
-
