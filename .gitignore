@@ -32,8 +32,8 @@
 *.dSYM/
 
 # Custom files
-./myint
-./myspin
-./mystop
-./mysplit
-./tsh
+myint
+myspin
+mystop
+mysplit
+tsh
