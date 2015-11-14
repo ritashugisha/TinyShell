@@ -258,10 +258,11 @@ int builtin_cmd(char **argv) {
             exit(1);
         } else if (strcmp(builtin[idx], "jobs") == 0) {
             listjobs(jobs);
-        } else if (strcmp(builtin[idx], "fg") == 0) {
-
-        } else if (strcmp(builtin[idx], "bg") == 0) {
-
+        } else if (
+            !strcmp(builtin[idx], "fg") ||
+            !strcmp(builtin[idx], "bg")
+        ) {
+            do_bgfg(argv);
         }
     }
     return is_builtin;     /* not a builtin command */
@@ -278,7 +279,9 @@ void do_bgfg(char **argv) {
  * waitfg - Block until process pid is no longer the foreground process
  */
 void waitfg(pid_t pid) {
-    return;
+    while (pid == fgpid(jobs)) {
+        sleep(0);
+    }
 }
 
 /*****************
@@ -293,6 +296,23 @@ void waitfg(pid_t pid) {
  *     currently running children to terminate.
  */
 void sigchld_handler(int sig) {
+    int status;
+    pid_t pid;
+
+    while ((pid = waitpid(fgpid(jobs), &status, WNOHANG|WUNTRACED)) > 0) {
+        if (WIFSTOPPED(status)) {
+            sigtstp_handler(20);
+        } else if (WIFSIGNALED(status)) {
+            sigint_handler(-2);
+        } else if (WIFEXITED(status)) {
+            deletejob(jobs, pid);
+        }
+    }
+
+    if (errno != ECHILD) {
+        unix_error("error using waitpid");
+    }
+
     return;
 }
 
@@ -302,7 +322,14 @@ void sigchld_handler(int sig) {
  *    to the foreground job.
  */
 void sigint_handler(int sig) {
+    int pid = fgpid(jobs);
 
+    if (pid != 0) {
+        kill(-pid, SIGINT);
+        if (sig < 0) {
+            deletejob(jobs, pid);
+        }
+    }
     return;
 }
 
@@ -312,6 +339,12 @@ void sigint_handler(int sig) {
  *     foreground job by sending it a SIGTSTP.
  */
 void sigtstp_handler(int sig) {
+    int pid = fgpid(jobs);
+
+    if (pid != 0) {
+        getjobpid(jobs, pid)->state = ST;
+        kill(-pid, SIGTSTP);
+    }
     return;
 }
 
