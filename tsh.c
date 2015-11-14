@@ -200,7 +200,7 @@ void eval(char *cmdline) {
                 unix_error("setpgid error");
             }
             if (execvp(argv[0], argv) < 0) {
-                printf("%s: command not found\n", argv[0]);
+                printf("%s: Command not found\n", argv[0]);
                 exit(1);
             }
         } else {
@@ -331,7 +331,7 @@ void do_bgfg(char **argv) {
     } else if (isdigit(id[0])) {
         pid_t pid = atoi(id);
         if (!(job = getjobpid(jobs, pid))) {
-            printf("%d: No such process\n", pid);
+            printf("(%d): No such process\n", pid);
             return;
         }
     } else {
