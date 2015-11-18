@@ -179,6 +179,8 @@ void eval(char *cmdline) {
     sigset_t mask;
 
     bg = parseline(cmdline, argv);
+
+    // handle the command if it is not built in
     if (!builtin_cmd(argv)) {
         if (sigemptyset(&mask) != 0) {
             unix_error("sigemptyset error");
@@ -190,20 +192,27 @@ void eval(char *cmdline) {
             unix_error("sigprocmask error");
         }
 
+        // fork to a child process
         if ((pid = fork()) < 0) {
             unix_error("forking error");
-        } else if (pid == 0) {
+        }
+        // handle the child process by giving it the passed not built in cmd
+        else if (pid == 0) {
             if (sigprocmask(SIG_UNBLOCK, &mask, NULL) != 0) {
                 unix_error("sigprocmask error");
             }
             if (setpgid(0, 0) < 0) {
                 unix_error("setpgid error");
             }
+            // the passed command could not be executed, therefore not found
             if (execvp(argv[0], argv) < 0) {
                 printf("%s: Command not found\n", argv[0]);
                 exit(1);
             }
-        } else {
+        }
+        // handle the parent process by adding the child job and
+        // waiting for foreground completion
+        else {
             if (!bg) {
                 addjob(jobs, pid, FG, cmdline);
             } else {
@@ -281,12 +290,14 @@ int parseline(const char *cmdline, char **argv) {
 }
 
 /*
- * builtin_cmd - If the user has typed a built-in command then execute
+ * builtin_cmd - If the user has typed a built-in command, then execute
  *    it immediately.
  */
 int builtin_cmd(char **argv) {
     int is_builtin = 0;
     int idx = 0;
+
+    // determine if the given command is built in or not built in
     for (int i = 0; i < builtin_len; i++, idx++) {
         if (strcmp(argv[0], builtin[i]) == 0) {
             is_builtin = 1;
@@ -294,6 +305,8 @@ int builtin_cmd(char **argv) {
         }
     }
 
+    // if the command is built in, then handle the command by passing it
+    // to the corresponding function
     if (builtin[idx] != NULL) {
         if (strcmp(builtin[idx], "quit") == 0) {
             exit(1);
@@ -306,7 +319,7 @@ int builtin_cmd(char **argv) {
             do_bgfg(argv);
         }
     }
-    return is_builtin;     /* not a builtin command */
+    return is_builtin;
 }
 
 /*
@@ -317,34 +330,42 @@ void do_bgfg(char **argv) {
     char *id = argv[1];
     int jid;
 
+    // determine if the passed argument contains a PID or Job ID
     if (id == NULL) {
         printf("%s command requires PID or %%jobid argument\n", argv[0]);
         return;
     }
 
+    // handle Job ID
     if (id[0] == '%') {
         jid = atoi(&id[1]);
         if(!(job = getjobjid(jobs, jid))) {
             printf("%s: No such job\n", id);
             return;
         }
-    } else if (isdigit(id[0])) {
+    }
+    // handle PID
+    else if (isdigit(id[0])) {
         pid_t pid = atoi(id);
         if (!(job = getjobpid(jobs, pid))) {
             printf("(%d): No such process\n", pid);
             return;
         }
-    } else {
+    }
+    // no valid PID or Job ID
+    else {
         printf("%s: argument must be a PID or %%jobid\n", argv[0]);
         return;
     }
 
+    // kill the given job process using SIGCONT
     if (kill(-(job->pid), SIGCONT) <0) {
         if (errno != ESRCH) {
             unix_error("kill error");
         }
     }
 
+    // handle changing the states of foreground or background processes
     if (!strcmp("fg", argv[0])) {
         job->state = FG;
         waitfg(job->pid);
@@ -360,6 +381,7 @@ void do_bgfg(char **argv) {
  * waitfg - Block until process pid is no longer the foreground process
  */
 void waitfg(pid_t pid) {
+    // until the pid is equal to the foreground job, wait
     while (pid == fgpid(jobs)) {
         sleep(0);
     }
@@ -380,6 +402,8 @@ void sigchld_handler(int sig) {
     int status;
     pid_t pid;
 
+    // SIGCHLD, waits for a child process to become a zombie, then reaps 
+    // the child process and removes the job
     while ((pid = waitpid(fgpid(jobs), &status, WNOHANG|WUNTRACED)) > 0) {
         if (WIFSTOPPED(status)) {
             sigtstp_handler(20);
@@ -393,8 +417,6 @@ void sigchld_handler(int sig) {
     if (errno != ECHILD) {
         unix_error("error using waitpid");
     }
-
-    return;
 }
 
 /*
@@ -406,6 +428,7 @@ void sigint_handler(int sig) {
     int pid = fgpid(jobs);
     int jid = pid2jid(pid);
 
+    // SIGINT, kills the process and removes the job if present
     if (pid != 0) {
         kill(-pid, SIGINT);
         if (sig < 0) {
@@ -416,7 +439,6 @@ void sigint_handler(int sig) {
             deletejob(jobs, pid);
         }
     }
-    return;
 }
 
 /*
@@ -428,12 +450,12 @@ void sigtstp_handler(int sig) {
     int pid = fgpid(jobs);
     int jid = pid2jid(pid);
 
+    // SIGTSTP, changes the state of the job to ST and kills the process
     if (pid != 0) {
         printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, sig);
         getjobpid(jobs, pid)->state = ST;
         kill(-pid, SIGTSTP);
     }
-    return;
 }
 
 /*********************
